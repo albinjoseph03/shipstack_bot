@@ -1,0 +1,8 @@
+name: website_builder
+description: Generates a complete static website and saves it to a local /projects directory.
+triggers:
+  - "build website"
+  - "create site"
+  - "make website"
+inputs:
+  prompt: string
