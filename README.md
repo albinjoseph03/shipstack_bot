@@ -23,7 +23,7 @@ It answers you on the channels you already use (WhatsApp, Telegram, Slack, Disco
 
 If you want a personal, single-user assistant that feels local, fast, and always-on, this is it.
 
-[Website](https://shipstack.ai) · [Docs](https://docs.shipstack.ai) · [Vision](VISION.md) · [DeepWiki](https://deepwiki.com/shipstack/shipstack) · [Getting Started](https://docs.shipstack.ai/start/getting-started) · [Updating](https://docs.shipstack.ai/install/updating) · [Showcase](https://docs.shipstack.ai/start/showcase) · [FAQ](https://docs.shipstack.ai/help/faq) · [Wizard](https://docs.shipstack.ai/start/wizard) · [Nix](https://github.com/shipstack/nix-shipstack) · [Docker](https://docs.shipstack.ai/install/docker) · [Discord](https://discord.gg/shipstack)
+[Website](https://albinjoseph03.github.io/shipstack/) · [Docs](https://docs.shipstack.ai) · [Vision](VISION.md) · [DeepWiki](https://deepwiki.com/shipstack/shipstack) · [Getting Started](https://docs.shipstack.ai/start/getting-started) · [Updating](https://docs.shipstack.ai/install/updating) · [Showcase](https://docs.shipstack.ai/start/showcase) · [FAQ](https://docs.shipstack.ai/help/faq) · [Wizard](https://docs.shipstack.ai/start/wizard) · [Nix](https://github.com/shipstack/nix-shipstack) · [Docker](https://docs.shipstack.ai/install/docker) · [Discord](https://discord.gg/shipstack)
 
 Preferred setup: run the onboarding wizard (`shipstack onboard`) in your terminal.
 The wizard guides you step by step through setting up the gateway, workspace, channels, and skills. The CLI wizard is the recommended path and works on **macOS, Linux, and Windows (via WSL2; strongly recommended)**.
@@ -485,8 +485,8 @@ Use these when you're past the onboarding flow and want the deeper reference.
 ShipStack was built for shipping fast and iterating quickly. 🚀
 by the community.
 
-- [shipstack.ai](https://shipstack.ai)
-- [soul.md](https://soul.md)
+- [Website](https://albinjoseph03.github.io/shipstack/)
+- [GitHub](https://github.com/albinjoseph03/shipstack_bot)
 - [@shipstack](https://x.com/shipstack)
 
 ## Community
