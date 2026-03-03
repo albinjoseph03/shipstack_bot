@@ -22,4 +22,4 @@ echo "✅ Setup complete. Starting Gateway..."
 
 # 4. Start the gateway in the foreground
 # Binding to 0.0.0.0 and using the Railway-assigned PORT
-exec node openclaw.mjs gateway run --allow-unconfigured --bind 0.0.0.0 --port "${PORT:-18789}" --verbose
+exec node openclaw.mjs gateway run --allow-unconfigured --bind lan --port "${PORT:-18789}" --verbose
