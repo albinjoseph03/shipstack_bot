@@ -1,539 +1,71 @@
-#!/usr/bin/env python3
-"""
-Website Builder Skill Handler
-
-Generates a complete static website from a prompt and deploys it to Vercel.
-Returns the live hosted URL.
-"""
-
 import os
-import sys
-import json
+import shutil
 import uuid
-import subprocess
 import re
-from pathlib import Path
 
-# Load environment variables from .env file
-def load_env():
-    """Load environment variables from .env file."""
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    key = key.strip()
-                    value = value.strip().strip('"').strip("'")
-                    if key not in os.environ:
-                        os.environ[key] = value
+def create_project():
+    """Create a unique project folder inside /projects/{projectId}"""
+    project_id = str(uuid.uuid4())
+    projects_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'projects'))
+    project_path = os.path.join(projects_dir, project_id)
+    os.makedirs(project_path, exist_ok=True)
+    return project_id, project_path
 
-load_env()
+def copy_template(project_path):
+    """Copy the basic template into the target folder"""
+    template_dir = os.path.join(os.path.dirname(__file__), 'templates', 'basic')
+    for item in os.listdir(template_dir):
+        s = os.path.join(template_dir, item)
+        d = os.path.join(project_path, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, dirs_exist_ok=True)
+        else:
+            shutil.copy2(s, d)
 
-# Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
-VERCEL_TOKEN = os.getenv("VERCEL_TOKEN")
-PROJECTS_DIR = Path(__file__).parent.parent.parent / "projects"
+def modify_html_content(project_path, prompt, llm_modification_fn=None):
+    """
+    Modify index.html content using the LLM based on user prompt.
+    Constraints:
+    - Replace placeholder text only
+    - Not rewrite entire structure
+    - Keep layout stable
+    - Only update content areas
+    """
+    index_path = os.path.join(project_path, 'index.html')
+    with open(index_path, 'r', encoding='utf-8') as f:
+        content = f.read()
 
-# Ensure projects directory exists
-PROJECTS_DIR.mkdir(exist_ok=True)
+    if llm_modification_fn:
+        content = llm_modification_fn(content, prompt)
+    else:
+        # Fallback if no LLM handler is provided
+        content = content.replace('<!-- TITLE_PLACEHOLDER -->', f'Generated Title for: {prompt}<!-- /TITLE_PLACEHOLDER -->')
 
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write(content)
 
-def generate_website_content(prompt: str) -> dict:
-    """Use OpenAI to generate website content based on the prompt."""
-    try:
-        from openai import OpenAI
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "openai"])
-        from openai import OpenAI
-    
-    if not OPENAI_API_KEY:
-        raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY_1 or OPENAI_API_KEY in .env")
-    
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    
-    system_prompt = """You are a web content generator. Given a user's request, generate content for a modern static website.
-    
-Return a JSON object with the following structure:
-{
-    "site_name": "Name of the website",
-    "title": "Main headline for the hero section",
-    "subtitle": "Subtitle/tagline for the hero section",
-    "cta_text": "Call to action button text",
-    "features": [
-        {"title": "Feature 1 Title", "description": "Feature 1 description"},
-        {"title": "Feature 2 Title", "description": "Feature 2 description"},
-        {"title": "Feature 3 Title", "description": "Feature 3 description"}
-    ],
-    "contact_text": "Text for the contact section",
-    "primary_color": "A hex color code that fits the theme (e.g., #3498db)",
-    "gradient_start": "Gradient start color for hero (e.g., #2c3e50)",
-    "gradient_end": "Gradient end color for hero (e.g., #3498db)"
-}
+def save_project():
+    """Save files step (placeholder for future extensions like git push / db)."""
+    pass
 
-Make the content relevant, professional, and tailored to the user's request.
-Only return valid JSON, no other text."""
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        max_tokens=1000
-    )
-    
-    content = response.choices[0].message.content
-    # Clean up potential markdown code blocks
-    content = re.sub(r'^```json\s*', '', content)
-    content = re.sub(r'\s*```$', '', content)
-    
-    return json.loads(content)
-
-
-def create_html(content: dict) -> str:
-    """Generate HTML from content dictionary."""
-    return f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{content["site_name"]}</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <header class="hero">
-        <div class="container">
-            <h1 class="hero-title">{content["title"]}</h1>
-            <p class="hero-subtitle">{content["subtitle"]}</p>
-            <a href="#contact" class="btn">{content["cta_text"]}</a>
-        </div>
-    </header>
-
-    <section id="features" class="features">
-        <div class="container">
-            <h2 class="section-title">What We Offer</h2>
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <h3>{content["features"][0]["title"]}</h3>
-                    <p>{content["features"][0]["description"]}</p>
-                </div>
-                <div class="feature-card">
-                    <h3>{content["features"][1]["title"]}</h3>
-                    <p>{content["features"][1]["description"]}</p>
-                </div>
-                <div class="feature-card">
-                    <h3>{content["features"][2]["title"]}</h3>
-                    <p>{content["features"][2]["description"]}</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="contact" class="contact">
-        <div class="container">
-            <h2 class="section-title">Get In Touch</h2>
-            <p>{content["contact_text"]}</p>
-            <form class="contact-form">
-                <input type="text" placeholder="Your Name" required>
-                <input type="email" placeholder="Your Email" required>
-                <textarea placeholder="Your Message" rows="5" required></textarea>
-                <button type="submit" class="btn">Send Message</button>
-            </form>
-        </div>
-    </section>
-
-    <footer>
-        <div class="container">
-            <p>&copy; 2026 {content["site_name"]}. All rights reserved.</p>
-        </div>
-    </footer>
-    <script src="script.js"></script>
-</body>
-</html>'''
-
-
-def create_css(content: dict) -> str:
-    """Generate CSS from content dictionary."""
-    primary_color = content.get("primary_color", "#3498db")
-    gradient_start = content.get("gradient_start", "#2c3e50")
-    gradient_end = content.get("gradient_end", "#3498db")
-    
-    return f''':root {{
-    --primary-color: {primary_color};
-    --text-color: #333;
-    --bg-color: #f9f9f9;
-    --card-bg: #fff;
-}}
-
-* {{
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}}
-
-body {{
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: var(--text-color);
-    background-color: var(--bg-color);
-    line-height: 1.6;
-}}
-
-.container {{
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 20px;
-}}
-
-.btn {{
-    display: inline-block;
-    background: var(--primary-color);
-    color: #fff;
-    padding: 12px 30px;
-    text-decoration: none;
-    border: none;
-    border-radius: 30px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-}}
-
-.btn:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-}}
-
-.hero {{
-    background: linear-gradient(135deg, {gradient_start}, {gradient_end});
-    color: #fff;
-    padding: 120px 0;
-    text-align: center;
-    min-height: 60vh;
-    display: flex;
-    align-items: center;
-}}
-
-.hero-title {{
-    font-size: 3.5rem;
-    margin-bottom: 20px;
-    font-weight: 700;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-}}
-
-.hero-subtitle {{
-    font-size: 1.3rem;
-    margin-bottom: 40px;
-    opacity: 0.95;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-}}
-
-.section-title {{
-    text-align: center;
-    margin-bottom: 50px;
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--text-color);
-}}
-
-.features {{
-    padding: 80px 0;
-}}
-
-.feature-grid {{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
-}}
-
-.feature-card {{
-    background: var(--card-bg);
-    padding: 40px 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    text-align: center;
-    transition: all 0.3s ease;
-}}
-
-.feature-card:hover {{
-    transform: translateY(-10px);
-    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-}}
-
-.feature-card h3 {{
-    margin-bottom: 15px;
-    font-size: 1.4rem;
-    color: var(--primary-color);
-}}
-
-.feature-card p {{
-    color: #666;
-    line-height: 1.8;
-}}
-
-.contact {{
-    padding: 80px 0;
-    background: linear-gradient(180deg, #fff 0%, var(--bg-color) 100%);
-    text-align: center;
-}}
-
-.contact > .container > p {{
-    max-width: 600px;
-    margin: 0 auto 40px;
-    color: #666;
-    font-size: 1.1rem;
-}}
-
-.contact-form {{
-    max-width: 500px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}}
-
-.contact-form input,
-.contact-form textarea {{
-    padding: 15px 20px;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    font-size: 1rem;
-    transition: border-color 0.3s ease;
-    font-family: inherit;
-}}
-
-.contact-form input:focus,
-.contact-form textarea:focus {{
-    outline: none;
-    border-color: var(--primary-color);
-}}
-
-footer {{
-    background: {gradient_start};
-    color: #fff;
-    text-align: center;
-    padding: 30px 0;
-}}
-
-footer p {{
-    opacity: 0.9;
-}}
-
-@media (max-width: 768px) {{
-    .hero-title {{
-        font-size: 2.5rem;
-    }}
-    
-    .hero-subtitle {{
-        font-size: 1.1rem;
-    }}
-    
-    .section-title {{
-        font-size: 2rem;
-    }}
-}}'''
-
-
-def create_js() -> str:
-    """Generate JavaScript for the website."""
-    return '''// Smooth scrolling for anchor links
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-        }
-    });
-});
-
-// Form submission handler
-document.querySelector('.contact-form')?.addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    const data = Object.fromEntries(formData.entries());
-    
-    // Show success message
-    const btn = this.querySelector('button');
-    const originalText = btn.textContent;
-    btn.textContent = 'Message Sent!';
-    btn.style.background = '#27ae60';
-    
-    // Reset form
-    this.reset();
-    
-    // Restore button after 3 seconds
-    setTimeout(() => {
-        btn.textContent = originalText;
-        btn.style.background = '';
-    }, 3000);
-});
-
-// Add scroll animations
-const observerOptions = {
-    threshold: 0.1,
-    rootMargin: '0px 0px -50px 0px'
-};
-
-const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.style.opacity = '1';
-            entry.target.style.transform = 'translateY(0)';
-        }
-    });
-}, observerOptions);
-
-// Observe feature cards
-document.querySelectorAll('.feature-card').forEach(card => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(30px)';
-    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-    observer.observe(card);
-});
-
-console.log('Website loaded successfully!');
-'''
-
-
-def deploy_to_vercel(project_path: Path) -> str:
-    """Deploy the project to Vercel and return the URL."""
-    if not VERCEL_TOKEN:
-        raise ValueError("VERCEL_TOKEN not found in environment variables")
-    
-    # Determine vercel command (Windows uses vercel.cmd, Unix uses vercel)
-    vercel_cmd = "vercel.cmd" if os.name == "nt" else "vercel"
-    
-    # Run vercel deploy command with --public to ensure it's publicly accessible
-    result = subprocess.run(
-        [vercel_cmd, "--prod", "--yes", "--public", "--token", VERCEL_TOKEN],
-        cwd=project_path,
-        capture_output=True,
-        text=True
-    )
-    
-    if result.returncode != 0:
-        raise RuntimeError(f"Vercel deployment failed: {result.stderr}")
-    
-    # Extract URL from output - look for production URL patterns
-    output = result.stdout.strip()
-    
-    # Try to find production URL (prefer production domain over preview)
-    # Vercel output format: "Production: https://project-name.vercel.app"
-    # or "https://project-name.vercel.app" on its own line
-    url = None
-    
-    # Look for "Production:" line first
-    for line in output.split('\n'):
-        line = line.strip()
-        if 'production' in line.lower() and 'https://' in line.lower():
-            url_match = re.search(r'https://[^\s]+\.vercel\.app[^\s]*', line)
-            if url_match:
-                url = url_match.group(0)
-                break
-    
-    # If no production line found, look for any vercel.app URL
-    if not url:
-        url_match = re.search(r'https://[^\s]+\.vercel\.app[^\s]*', output)
-        if url_match:
-            url = url_match.group(0)
-    
-    # Fallback: look for any https:// URL
-    if not url:
-        for line in reversed(output.split('\n')):
-            line = line.strip()
-            if line.startswith('https://'):
-                url = line
-                break
-    
-    if not url:
-        raise RuntimeError(f"Could not extract deployment URL from Vercel output:\n{output}")
-    
-    return url
-
-
-def handle(prompt: str, **kwargs) -> dict:
+def handle(prompt, **kwargs):
     """
     Main handler function for the website_builder skill.
-    
-    Args:
-        prompt: User's description of the website they want
-        **kwargs: Additional arguments (llm, etc.)
-    
-    Returns:
-        dict with status, projectId, path, and url
     """
-    try:
-        # Generate content using OpenAI
-        content = generate_website_content(prompt)
-        
-        # Create project directory
-        project_id = str(uuid.uuid4())[:8]
-        project_name = re.sub(r'[^a-z0-9-]', '-', content['site_name'].lower())[:30]
-        project_folder = f"{project_name}-{project_id}"
-        project_path = PROJECTS_DIR / project_folder
-        project_path.mkdir(parents=True, exist_ok=True)
-        
-        # Generate and save files
-        html_content = create_html(content)
-        (project_path / "index.html").write_text(html_content)
-        
-        css_content = create_css(content)
-        (project_path / "styles.css").write_text(css_content)
-        
-        js_content = create_js()
-        (project_path / "script.js").write_text(js_content)
-        
-        # Create vercel.json to ensure public deployment
-        vercel_config = {
-            "version": 2,
-            "public": True
-        }
-        (project_path / "vercel.json").write_text(json.dumps(vercel_config, indent=2))
-        
-        # Deploy to Vercel
-        url = deploy_to_vercel(project_path)
-        
-        return {
-            "status": "success",
-            "projectId": project_id,
-            "path": str(project_path),
-            "url": url,
-            "site_name": content['site_name']
-        }
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-
-# CLI entry point for direct execution
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python handler.py \"Your website description\"")
-        sys.exit(1)
+    llm = kwargs.get('llm')
     
-    prompt = " ".join(sys.argv[1:])
-    result = handle(prompt)
+    def llm_mod(html_content, user_prompt):
+        if not llm: return html_content
+        instructions = "Replace placeholder text comments in the HTML based on the user's prompt. Do not rewrite structure."
+        return llm.generate(f"{instructions}\nPrompt: {user_prompt}\nHTML:\n{html_content}")
+
+    project_id, project_path = create_project()
+    copy_template(project_path)
+    modify_html_content(project_path, prompt, llm_modification_fn=llm_mod)
+    save_project()
     
-    if result["status"] == "success":
-        print(f"\n✅ Website created successfully!")
-        print(f"📁 Local path: {result['path']}")
-        #dont use result['url'] because it is not global url
-        global_url = 'https://' + result['path'].split('\\')[-1] + '.vercel.app'
-        print(f"🔍 Global URL: {global_url}")
-        print(f"🔍 Site name: {result}")
-    else:
-        print(f"\n❌ Error: {result['error']}")
-        sys.exit(1)
+    return {
+        "status": "success",
+        "projectId": project_id,
+        "path": project_path
+    }

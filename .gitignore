@@ -120,14 +120,3 @@ dist/protocol.schema.json
 
 # Synthing
 **/.stfolder/
-
-
-
-# Python projects
-.venv/
-projects/
-.cursor/
-.openclaw/
-HEARTBEAT.md
-SOUL.md
-TOOLS.md
