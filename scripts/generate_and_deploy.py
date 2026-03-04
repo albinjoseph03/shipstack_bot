@@ -441,7 +441,7 @@ def create_project(prompt: str) -> tuple[str, Path]:
     (project_path / "script.js").write_text(js_content)
     
     print(f"✅ Project created at: {project_path}")
-    return project_id, project_path
+    return project_id, project_path, project_folder
 
 
 def deploy_to_vercel(project_path: Path) -> str:
@@ -505,25 +505,24 @@ def main():
     
     try:
         # Step 1: Generate the website
-        project_id, project_path = create_project(prompt)
+        project_id, project_path, project_folder = create_project(prompt)
         print()
-        
+
+        global_url = f"https://{project_folder}.vercel.app"
+
         # Step 2: Deploy to Vercel
         url = deploy_to_vercel(project_path)
         print()
-        # Derive global URL from project folder name (matches handler logic)
-        project_folder = project_path.name  # e.g. "simple-test-page-323f0c27"
-        global_url = f"https://{project_folder}.vercel.app"
-        url =global_url
         # Final output
         print("=" * 60)
         print("🎉 SUCCESS!")
         print("=" * 60)
         print(f"📁 Local path: {project_path}")
-        print(f"🌍 Live URL:   {global_url}")
+        print(f"🌍 Accessible URL:   {global_url}")
+        print(f"🌍 Live URL:   {url}")
         print("=" * 60)
         
-        return url
+        return global_url
         
     except Exception as e:
         print(f"\n❌ Error: {e}")
