@@ -31,6 +31,20 @@ if command -v python3 >/dev/null 2>&1; then
   pip install openai || true
 fi
 
+# 3c. Check Vercel CLI and token for website_builder
+echo "🔹 Checking Vercel CLI and token..."
+if command -v vercel >/dev/null 2>&1; then
+  echo "✅ vercel CLI found: $(vercel --version || true)"
+else
+  echo "❌ vercel CLI not found in PATH. Ensure Dockerfile includes: RUN npm install -g vercel"
+fi
+
+if [ -z "${VERCEL_TOKEN:-}" ]; then
+  echo "⚠️ VERCEL_TOKEN is not set. website_builder will not be able to deploy to Vercel."
+else
+  echo "✅ VERCEL_TOKEN is set (value hidden)."
+fi
+
 echo "🔹 Setting default model to openai/gpt-5.1-codex..."
 node openclaw.mjs config set agents.defaults.model "openai/gpt-5.1-codex"
 
