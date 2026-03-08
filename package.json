@@ -1,7 +1,7 @@
 {
   "name": "shipstack",
   "version": "2026.2.27",
-  "description": "Multi-channel AI gateway with extensible messaging integrations",
+  "description": "AI-powered software shipping tool — build with AI, deploy anywhere. Built on OpenClaw.",
   "keywords": [],
   "homepage": "https://github.com/openclaw/openclaw#readme",
   "bugs": {
@@ -14,6 +14,7 @@
     "url": "git+https://github.com/openclaw/openclaw.git"
   },
   "bin": {
+    "shipstack": "shipstack.mjs",
     "openclaw": "openclaw.mjs"
   },
   "directories": {
@@ -23,8 +24,8 @@
   "files": [
     "CHANGELOG.md",
     "LICENSE",
+    "shipstack.mjs",
     "openclaw.mjs",
-    "README-header.png",
     "README.md",
     "assets/",
     "dist/",

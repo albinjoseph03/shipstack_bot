@@ -1,0 +1,4 @@
+# Python dependencies for Shipstack skills
+# Install: pip install -r requirements.txt
+
+openai>=1.0.0
