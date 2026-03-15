@@ -85,7 +85,11 @@ You can also use `~/.openclaw/.env` for daemon-style runs, but `.env` in the rep
 Minimum local setup:
 
 ```env
+# Set at least one supported model provider key from `.env.example`
 OPENAI_API_KEY=sk-your-openai-key
+# ANTHROPIC_API_KEY=sk-ant-your-key
+# GEMINI_API_KEY=your-gemini-key
+# OPENROUTER_API_KEY=sk-or-your-key
 ```
 
 Optional deployment and integration variables:
@@ -114,7 +118,15 @@ Notes:
 
 - `.env.example` already includes core OpenClaw variables such as `OPENCLAW_GATEWAY_TOKEN`.
 - Environment loading precedence is: process env, `./.env`, `~/.openclaw/.env`, then the `env` block in `openclaw.json`.
-- If `OPENAI_API_KEY` is missing, the builder falls back to a deterministic project blueprint.
+- Shipstack as a whole can run with any supported model provider configured through OpenClaw.
+- The direct `skills/website_builder/handler.py` path resolves planner models in this order:
+  - explicit `model_ref` passed into the skill call
+  - `agents.defaults.model.primary` from OpenClaw config
+  - deterministic fallback
+- The planner currently supports:
+  - deterministic local blueprint generation
+  - OpenAI-compatible backends for compatible providers or custom endpoints
+- If the configured provider does not have a planner backend yet, Shipstack falls back to a deterministic project blueprint.
 - If deploy tokens are missing, Shipstack still generates the project but marks deployment as `prepared` instead of fully deployed.
 - If a Git provider token is missing, repo listing and push flows will fail for that provider.
 
@@ -182,6 +194,9 @@ Relevant inputs supported by the skill:
 - `project_type`
 - `deploy_target`
 - `use_supabase`
+- `model_ref`
+- `planner_provider`
+- `planner_api_base`
 - `git_provider`
 - `git_repo`
 - `git_branch`

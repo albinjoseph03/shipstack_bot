@@ -15,6 +15,7 @@ if str(SKILL_DIR) not in sys.path:
 
 import wb_config
 import wb_deploy
+import wb_llm
 import wb_pipeline
 import wb_planner
 from wb_models import GitResult
@@ -48,6 +49,50 @@ def build_blueprint(project_type: str, deploy_target: str, use_supabase: bool = 
 
 
 class WebsiteBuilderPipelineTests(unittest.TestCase):
+    def test_resolve_planner_settings_reads_openclaw_default_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "openclaw.json"
+            config_path.write_text(
+                (
+                    '{"agents":{"defaults":{"model":{"primary":"moonshot/kimi-k2.5"}}},'
+                    '"models":{"providers":{"moonshot":{"baseUrl":"https://api.moonshot.ai/v1","api":"openai-completions"}}}}'
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"OPENCLAW_CONFIG_PATH": str(config_path), "MOONSHOT_API_KEY": "moonshot-key"},
+                clear=False,
+            ):
+                settings = wb_llm.resolve_planner_settings()
+
+        self.assertEqual(settings.backend, "openai-compatible")
+        self.assertEqual(settings.model_ref, "moonshot/kimi-k2.5")
+        self.assertEqual(settings.provider, "moonshot")
+        self.assertEqual(settings.source, "openclaw-config")
+        self.assertEqual(settings.api_key, "moonshot-key")
+
+    def test_resolve_planner_settings_falls_back_for_unsupported_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "openclaw.json"
+            config_path.write_text(
+                '{"agents":{"defaults":{"model":{"primary":"anthropic/claude-opus-4-5"}}}}',
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"OPENCLAW_CONFIG_PATH": str(config_path)}, clear=False):
+                settings = wb_llm.resolve_planner_settings()
+
+        self.assertEqual(settings.backend, "deterministic")
+        self.assertEqual(settings.model_ref, "anthropic/claude-opus-4-5")
+        self.assertIn("does not have a planner backend yet", settings.reason or "")
+
+    def test_generate_project_blueprint_uses_deterministic_backend_when_no_model_is_configured(self):
+        with patch.dict(os.environ, {"OPENCLAW_CONFIG_PATH": str(Path(tempfile.gettempdir()) / "missing-openclaw.json")}, clear=False):
+            blueprint = wb_llm.generate_project_blueprint("Build me a dashboard", "fullstack_app", "railway")
+
+        self.assertEqual(blueprint["_planner"]["backend"], "deterministic")
+        self.assertEqual(blueprint["project_type"], "fullstack_app")
+
     def test_infer_project_type_prefers_fullstack_keywords(self):
         project_type = wb_planner.infer_project_type("Build an admin dashboard with auth and a database")
         deploy_target = wb_planner.infer_deploy_target("Deploy this backend on Railway with Supabase auth")
@@ -143,6 +188,25 @@ class WebsiteBuilderPipelineTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "selection_required")
         self.assertEqual(result["git"]["available_repos"][0]["full_name"], "demo/repo")
+    
+    def test_build_project_returns_planner_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            projects_dir = Path(tmp) / "projects"
+            repo_cache_dir = projects_dir / "_repo_cache"
+            blueprint = build_blueprint("static_site", "vercel")
+            blueprint["_planner"] = {"backend": "deterministic", "model_ref": None, "source": "fallback"}
+            with patch.object(wb_config, "PROJECTS_DIR", projects_dir), patch.object(
+                wb_config, "REPO_CACHE_DIR", repo_cache_dir
+            ), patch.object(wb_pipeline, "PROJECTS_DIR", projects_dir), patch(
+                "wb_planner.generate_project_blueprint", return_value=blueprint
+            ), patch.dict(
+                os.environ,
+                {"OPENAI_API_KEY": "", "OPENAI_API_KEY_1": "", "VERCEL_TOKEN": "", "RAILWAY_TOKEN": ""},
+                clear=False,
+            ):
+                result = wb_pipeline.build_project("Build a portfolio website for a designer")
+
+        self.assertEqual(result["planner"]["backend"], "deterministic")
 
 
 if __name__ == "__main__":

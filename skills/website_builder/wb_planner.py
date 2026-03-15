@@ -85,7 +85,14 @@ def build_project_spec(prompt: str, **kwargs) -> ProjectSpec:
     requested_deploy_target = kwargs.get("deploy_target")
     project_type = infer_project_type(prompt, requested_project_type)
     deploy_target = infer_deploy_target(prompt, requested_deploy_target)
-    blueprint = generate_project_blueprint(prompt, project_type, deploy_target)
+    blueprint = generate_project_blueprint(
+        prompt,
+        project_type,
+        deploy_target,
+        model_ref=kwargs.get("model_ref"),
+        planner_provider=kwargs.get("planner_provider"),
+        planner_api_base=kwargs.get("planner_api_base"),
+    )
 
     resolved_project_type = infer_project_type(prompt, blueprint.get("project_type", project_type))
     resolved_deploy_target = infer_deploy_target(prompt, blueprint.get("deploy_target", deploy_target))

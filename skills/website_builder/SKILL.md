@@ -1,14 +1,7 @@
 ---
 name: website_builder
 description: "Generate static sites or full-stack apps from a prompt, prepare Railway or Supabase handlers, and optionally apply the output into a hosted Git repository. Use when users want a new project scaffold, deployment-ready app, or repo modifications driven by a prompt."
-metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "🌐",
-        "requires": { "bins": ["python3"] },
-      },
-  }
+metadata: { "openclaw": { "emoji": "🌐", "requires": { "bins": ["python3"] } } }
 ---
 
 # Website And App Builder
@@ -49,6 +42,9 @@ Optional kwargs that the agent may pass:
 - `project_type`: `static_site` or `fullstack_app`
 - `deploy_target`: `vercel`, `railway`, `supabase`, or `local`
 - `use_supabase`: `true` or `false`
+- `model_ref`: explicit planner model in `provider/model` format
+- `planner_provider`: optional backend hint such as `openai-compatible` or `deterministic`
+- `planner_api_base`: override base URL for OpenAI-compatible planner endpoints
 - `git_provider`: `github`, `gitlab`, or `bitbucket`
 - `git_repo`: repo full name such as `owner/repo`
 - `git_branch`: target branch to update/create
@@ -143,11 +139,18 @@ If `git.available_repos` is returned, ask the user which repo to use next.
   - `SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `SUPABASE_PROJECT_REF`
-- Optional `OPENAI_API_KEY_1` or `OPENAI_API_KEY` for richer AI-generated blueprints
+- Shipstack supports any model provider configured through OpenClaw
+- The planner currently has:
+  - a deterministic backend that always works locally
+  - an OpenAI-compatible backend that can use `provider/model` plus either:
+    - OpenClaw `models.providers` config with an OpenAI-compatible `baseUrl`, or
+    - explicit `planner_api_base`, or
+    - a known OpenAI-compatible provider such as `openai`, `openrouter`, `moonshot`, `ollama`, or `vllm`
 
 ## Notes
 
-- Without OpenAI credentials, the skill falls back to a deterministic project blueprint
+- The skill first tries to use `model_ref` from the skill input, otherwise `agents.defaults.model.primary` from OpenClaw config
+- If the resolved provider does not have a planner backend yet, the builder falls back to a deterministic project blueprint
 - When targeting a hosted Git repo without `git_repo`, the skill returns a repo list instead of mutating anything
 - Repo updates default to a generated subdirectory inside the cloned repo unless `repo_subdir` is specified
 - Supabase is currently integrated by generating config and migration assets plus env validation

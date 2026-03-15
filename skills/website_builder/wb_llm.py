@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 import json
 import re
 import subprocess
 import sys
 from typing import Any
 
-from wb_config import resolve_openai_api_key
+from wb_config import get_env, load_openclaw_config, resolve_openclaw_default_model_ref
 
 
 def _fallback_blueprint(prompt: str, project_type: str, deploy_target: str) -> dict[str, Any]:
@@ -62,6 +63,55 @@ def _fallback_blueprint(prompt: str, project_type: str, deploy_target: str) -> d
     }
 
 
+@dataclass
+class PlannerSettings:
+    backend: str
+    model_ref: str | None = None
+    provider: str | None = None
+    api_base: str | None = None
+    api_key: str | None = None
+    api_key_env: str | None = None
+    source: str = "fallback"
+    reason: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+KNOWN_OPENAI_COMPATIBLE_ENVS: dict[str, list[str]] = {
+    "openai": ["OPENAI_API_KEY_1", "OPENAI_API_KEY"],
+    "openrouter": ["OPENROUTER_API_KEY"],
+    "xai": ["XAI_API_KEY"],
+    "moonshot": ["MOONSHOT_API_KEY"],
+    "ollama": [],
+    "vllm": ["VLLM_API_KEY"],
+    "huggingface": ["HUGGINGFACE_HUB_TOKEN", "HF_TOKEN"],
+    "lmstudio": [],
+}
+
+KNOWN_OPENAI_COMPATIBLE_BASE_URLS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "xai": "https://api.x.ai/v1",
+    "moonshot": "https://api.moonshot.ai/v1",
+    "ollama": "http://127.0.0.1:11434/v1",
+    "vllm": "http://127.0.0.1:8000/v1",
+}
+
+KNOWN_NON_OPENAI_BACKENDS = {
+    "anthropic",
+    "amazon-bedrock",
+    "google",
+    "google-vertex",
+    "google-antigravity",
+    "google-gemini-cli",
+    "openai-codex",
+    "opencode",
+    "qwen-portal",
+    "zai",
+}
+
+
 def _ensure_openai_module():
     try:
         from openai import OpenAI  # type: ignore
@@ -71,13 +121,146 @@ def _ensure_openai_module():
     return OpenAI
 
 
-def generate_project_blueprint(prompt: str, project_type: str, deploy_target: str) -> dict[str, Any]:
-    api_key = resolve_openai_api_key()
-    if not api_key:
-        return _fallback_blueprint(prompt, project_type, deploy_target)
+def _normalize_provider_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value.strip().lower()
 
+
+def _infer_provider_from_model_ref(model_ref: str | None) -> str | None:
+    if not model_ref or "/" not in model_ref:
+        return None
+    return model_ref.split("/", 1)[0].strip().lower()
+
+
+def _resolve_model_ref(kwargs: dict[str, Any], config: dict[str, Any]) -> tuple[str | None, str]:
+    explicit = kwargs.get("model_ref")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip(), "skill-input"
+    config_ref = resolve_openclaw_default_model_ref(config)
+    if config_ref:
+        return config_ref, "openclaw-config"
+    return None, "fallback"
+
+
+def _resolve_config_provider_entry(provider: str | None, config: dict[str, Any]) -> dict[str, Any]:
+    if not provider:
+        return {}
+    providers = ((config.get("models") or {}).get("providers") or {})
+    entry = providers.get(provider)
+    return entry if isinstance(entry, dict) else {}
+
+
+def _resolve_env_token_name(provider: str | None) -> str | None:
+    if not provider:
+        return None
+    if provider in KNOWN_OPENAI_COMPATIBLE_ENVS and KNOWN_OPENAI_COMPATIBLE_ENVS[provider]:
+        return KNOWN_OPENAI_COMPATIBLE_ENVS[provider][0]
+    env_provider = provider.upper().replace("-", "_")
+    return f"{env_provider}_API_KEY"
+
+
+def _resolve_provider_api_key(provider: str | None, provider_entry: dict[str, Any]) -> tuple[str | None, str | None]:
+    if not provider:
+        return None, None
+
+    raw_api_key = provider_entry.get("apiKey")
+    if isinstance(raw_api_key, str) and raw_api_key.strip():
+        raw_api_key = raw_api_key.strip()
+        if raw_api_key.startswith("${") and raw_api_key.endswith("}"):
+            env_name = raw_api_key[2:-1].strip()
+            return get_env(env_name), env_name
+        return raw_api_key, None
+
+    for env_name in KNOWN_OPENAI_COMPATIBLE_ENVS.get(provider, []):
+        value = get_env(env_name)
+        if value:
+            return value, env_name
+
+    fallback_env = _resolve_env_token_name(provider)
+    if fallback_env:
+        return get_env(fallback_env), fallback_env
+    return None, None
+
+
+def resolve_planner_settings(**kwargs) -> PlannerSettings:
+    explicit_backend = _normalize_provider_name(kwargs.get("planner_provider"))
+    config = load_openclaw_config()
+    model_ref, model_source = _resolve_model_ref(kwargs, config)
+    provider = _normalize_provider_name(kwargs.get("planner_provider"))
+    if provider in {"deterministic", "openai-compatible"}:
+        provider = _infer_provider_from_model_ref(model_ref)
+    provider = provider or _infer_provider_from_model_ref(model_ref)
+    explicit_api_base = kwargs.get("planner_api_base")
+    provider_entry = _resolve_config_provider_entry(provider, config)
+
+    if explicit_backend == "deterministic":
+        return PlannerSettings(backend="deterministic", model_ref=model_ref, provider=provider, source="skill-input")
+
+    config_api = provider_entry.get("api")
+    config_api_base = provider_entry.get("baseUrl")
+    api_key, api_key_env = _resolve_provider_api_key(provider, provider_entry)
+
+    backend = "deterministic"
+    reason = None
+    source = model_source
+    if not model_ref:
+        reason = "No planner-capable model reference was configured."
+    elif explicit_backend == "openai-compatible":
+        backend = "openai-compatible"
+        source = "skill-input"
+    elif explicit_api_base:
+        backend = "openai-compatible"
+        source = "skill-input"
+    elif provider_entry and isinstance(config_api, str) and config_api.startswith("openai"):
+        backend = "openai-compatible"
+        source = "openclaw-config"
+    elif provider in KNOWN_OPENAI_COMPATIBLE_BASE_URLS or provider in KNOWN_OPENAI_COMPATIBLE_ENVS:
+        backend = "openai-compatible"
+    elif provider in KNOWN_NON_OPENAI_BACKENDS:
+        reason = f'Provider "{provider}" does not have a planner backend yet.'
+    else:
+        reason = f'Provider "{provider}" is not planner-compatible without explicit OpenAI-compatible config.'
+
+    api_base = explicit_api_base or (config_api_base if isinstance(config_api_base, str) else None)
+    if not api_base and provider:
+        api_base = KNOWN_OPENAI_COMPATIBLE_BASE_URLS.get(provider)
+
+    if backend == "openai-compatible" and provider != "ollama" and not api_key:
+        return PlannerSettings(
+            backend="deterministic",
+            model_ref=model_ref,
+            provider=provider,
+            api_base=api_base,
+            source=source,
+            reason=f'Planner backend for "{provider}" requires an API key.',
+        )
+
+    return PlannerSettings(
+        backend=backend,
+        model_ref=model_ref,
+        provider=provider,
+        api_base=api_base,
+        api_key=api_key,
+        api_key_env=api_key_env,
+        source=source,
+        reason=reason,
+    )
+
+
+def _generate_openai_compatible_blueprint(
+    prompt: str,
+    project_type: str,
+    deploy_target: str,
+    settings: PlannerSettings,
+) -> dict[str, Any]:
+    if not settings.model_ref:
+        return _fallback_blueprint(prompt, project_type, deploy_target)
     OpenAI = _ensure_openai_module()
-    client = OpenAI(api_key=api_key)
+    client_kwargs: dict[str, Any] = {"api_key": settings.api_key}
+    if settings.api_base:
+        client_kwargs["base_url"] = settings.api_base
+    client = OpenAI(**client_kwargs)
     system_prompt = """
 You design deployable software projects from natural language requests.
 
@@ -107,7 +290,7 @@ Guidelines:
 - Keep color values as hex strings.
 """
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.model_ref,
         messages=[
             {"role": "system", "content": system_prompt},
             {
@@ -126,6 +309,18 @@ Guidelines:
     content = re.sub(r"^```json\s*", "", content.strip())
     content = re.sub(r"\s*```$", "", content)
     try:
-        return json.loads(content)
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            parsed["_planner"] = settings.to_dict()
+        return parsed
     except json.JSONDecodeError:
         return _fallback_blueprint(prompt, project_type, deploy_target)
+
+
+def generate_project_blueprint(prompt: str, project_type: str, deploy_target: str, **kwargs) -> dict[str, Any]:
+    settings = resolve_planner_settings(**kwargs)
+    if settings.backend == "openai-compatible":
+        return _generate_openai_compatible_blueprint(prompt, project_type, deploy_target, settings)
+    blueprint = _fallback_blueprint(prompt, project_type, deploy_target)
+    blueprint["_planner"] = settings.to_dict()
+    return blueprint

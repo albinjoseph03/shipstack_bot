@@ -65,7 +65,7 @@ cp .env.example .env
 - **pnpm** (recommended) or npm
 - **Vercel CLI** — `npm install -g vercel` for Vercel deploys
 - **Railway CLI** — optional, for Railway deploys
-- An **OpenAI API key**
+- At least one supported **AI model provider API key**
 - A **Vercel API token** for Vercel deployment
 
 ## Environment Variables
@@ -73,9 +73,11 @@ cp .env.example .env
 Create a `.env` file in the project root (or copy `.env.example`):
 
 ```env
-# Required — OpenAI API key for AI content generation
-# Get one at: https://platform.openai.com/api-keys
+# Set at least one supported model provider key
 OPENAI_API_KEY=sk-your-openai-api-key
+# ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+# GEMINI_API_KEY=your-gemini-key
+# OPENROUTER_API_KEY=sk-or-your-openrouter-key
 
 # Optional — Vercel token for deployment
 # Get one at: https://vercel.com/account/tokens
@@ -104,6 +106,17 @@ BITBUCKET_WORKSPACE=your-bitbucket-workspace
 # Create a bot via @BotFather on Telegram
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 ```
+
+Shipstack can run with any supported model provider configured through OpenClaw. The direct `skills/website_builder/handler.py` path resolves a planner model from skill input or OpenClaw config, uses a compatible planner backend when available, and otherwise falls back to a deterministic planner.
+
+Planner behavior:
+
+- First choice: explicit `model_ref` passed into the skill invocation
+- Otherwise: `agents.defaults.model.primary` from OpenClaw config
+- Planner backend today:
+  - deterministic fallback always available
+  - OpenAI-compatible planner for compatible providers/endpoints
+- If the configured provider does not have a planner backend yet, Shipstack still generates the project with a deterministic blueprint
 
 ## Usage
 

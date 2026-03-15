@@ -12,6 +12,9 @@ inputs:
   project_type: optional_string
   deploy_target: optional_string
   use_supabase: optional_boolean
+  model_ref: optional_string
+  planner_provider: optional_string
+  planner_api_base: optional_string
   git_provider: optional_string
   git_repo: optional_string
   git_branch: optional_string

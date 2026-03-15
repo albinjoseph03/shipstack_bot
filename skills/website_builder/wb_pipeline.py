@@ -65,6 +65,7 @@ def build_project(prompt: str, **kwargs) -> dict:
             "projectType": spec.project_type,
             "deployTarget": spec.deploy_target,
             "spec": spec.to_dict(),
+            "planner": spec.raw_blueprint.get("_planner"),
             "files": scaffolded_files,
             "deployment": deployment.to_dict(),
             "integrations": [item.to_dict() for item in integrations],
